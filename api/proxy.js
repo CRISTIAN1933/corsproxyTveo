@@ -8,39 +8,45 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Missing url parameter" });
     }
 
-    // Evitar doble encoding
     const finalUrl = decodeURIComponent(target);
 
-    // Hacer request a la URL real
     const response = await fetch(finalUrl, {
       method: "GET",
       headers: {
-        // Puedes agregar acá otros headers si los necesitas
         "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/110 Safari/537.36",
-        Accept: "*/*",
-      },
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
+        "Accept": "*/*",
+        "Referer": finalUrl,
+        "Origin": finalUrl
+      }
     });
 
-    // Pasar headers importantes
     res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Credentials", "true");
-    res.setHeader("Content-Type", response.headers.get("content-type") || "application/octet-stream");
+    res.setHeader("Access-Control-Allow-Headers", "*");
+    res.setHeader(
+      "Content-Type",
+      response.headers.get("content-type") || "application/octet-stream"
+    );
 
-    // Si el stream es .m3u8, ajustamos paths relativos
-    if (finalUrl.endsWith(".m3u8")) {
+    // Detectar M3U8 aunque tenga query
+    if (finalUrl.includes(".m3u8")) {
       let text = await response.text();
 
-      // Resolver paths relativos a absolutos
       const baseUrl = finalUrl.substring(0, finalUrl.lastIndexOf("/") + 1);
-      text = text.replace(/^(?!https?:\/\/)(.*\.m3u8|.*\.ts)$/gm, match => baseUrl + match);
+
+      // Reescribir TODOS los paths relativos
+      text = text.replace(/^(?!https?:\/\/)(.+)$/gm, line => {
+        if (line.startsWith("#")) return line;
+        return baseUrl + line;
+      });
 
       return res.send(text);
     }
 
-    // Si es TS u otro archivo binario
-    const arrayBuffer = await response.arrayBuffer();
-    return res.send(Buffer.from(arrayBuffer));
+    // Segmentos / binario
+    const buffer = await response.arrayBuffer();
+    return res.send(Buffer.from(buffer));
+
   } catch (err) {
     console.error("Proxy error:", err);
     return res.status(500).json({ error: "Proxy request failed" });
